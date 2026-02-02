@@ -5,5 +5,5 @@ import (
 )
 
 func Health(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "ok"})
+	c.JSON(200, gin.H{"status": "ok-from-air"})
 }
