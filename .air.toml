@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+bin = "tmp/server"
+full_bin = "PORT=8080 ./tmp/server"
+include_ext = ["go"]
+exclude_dir = ["frontend", "tmp", "node_modules"]
+delay = 500 # ms
+
+[log]
+time = true
