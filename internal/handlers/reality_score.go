@@ -1,29 +1,37 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 
-	"github.com/agency-finance-reality/server/internal/db"
+	"github.com/agency-finance-reality/server/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
-func GetAgencyRealityScore(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
+type RealityScoreHandler struct {
+	agencyService  services.AgencyService
+	financeService services.FinanceService
+}
 
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		score, err := db.GetAgencyRealityScore(database, agency.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, score)
+func NewRealityScoreHandler(agencyService services.AgencyService, financeService services.FinanceService) *RealityScoreHandler {
+	return &RealityScoreHandler{
+		agencyService:  agencyService,
+		financeService: financeService,
 	}
+}
+
+func (h *RealityScoreHandler) GetRealityScore(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
+	}
+
+	score, err := h.financeService.GetRealityScore(agency.ID)
+	if err != nil {
+		SendInternalError(c)
+		return
+	}
+
+	c.JSON(http.StatusOK, score)
 }

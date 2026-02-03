@@ -1,102 +1,112 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 
-	"github.com/agency-finance-reality/server/internal/db"
+	"github.com/agency-finance-reality/server/internal/services"
 	"github.com/gin-gonic/gin"
 )
+
+type DailyFinanceHandler struct {
+	agencyService  services.AgencyService
+	financeService services.FinanceService
+}
+
+func NewDailyFinanceHandler(agencyService services.AgencyService, financeService services.FinanceService) *DailyFinanceHandler {
+	return &DailyFinanceHandler{
+		agencyService:  agencyService,
+		financeService: financeService,
+	}
+}
 
 type AddRevenueRequest struct {
 	Amount float64 `json:"amount" binding:"required,gt=0"`
 	Source string  `json:"source" binding:"required"`
 }
 
+func (h *DailyFinanceHandler) AddRevenue(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
+	}
+
+	var req AddRevenueRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		SendError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	err = h.financeService.AddRevenue(agency.ID, req.Amount, req.Source)
+	if err != nil {
+		SendInternalError(c)
+		return
+	}
+
+	c.Status(http.StatusCreated)
+}
+
 type AddCostRequest struct {
-	Amount float64 `json:"amount" binding:"required,gt=0"`
-	Type   string  `json:"type" binding:"required,oneof=fixed variable"`
-	Label  string  `json:"label" binding:"required"`
+	Amount   float64 `json:"amount" binding:"required,gt=0"`
+	Type     string  `json:"type" binding:"required"`
+	Label    string  `json:"label" binding:"required"`
+	Category string  `json:"category" binding:"required,oneof=people tools other"`
 }
 
-func AddRevenue(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Agency not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		var req AddRevenueRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
-			return
-		}
-
-		if err := db.AddRevenue(database, agency.ID, req.Amount, req.Source); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add revenue"})
-			return
-		}
-
-		c.Status(http.StatusCreated)
+func (h *DailyFinanceHandler) AddCost(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
 	}
+
+	var req AddCostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		SendError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	err = h.financeService.AddCost(agency.ID, req.Amount, req.Type, req.Label, req.Category)
+	if err != nil {
+		SendInternalError(c)
+		return
+	}
+
+	c.Status(http.StatusCreated)
 }
 
-func AddCost(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Agency not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		var req AddCostRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
-			return
-		}
-
-		if err := db.AddCost(database, agency.ID, req.Amount, req.Type, req.Label); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add cost"})
-			return
-		}
-
-		c.Status(http.StatusCreated)
+func (h *DailyFinanceHandler) GetCostBreakdown(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
 	}
+
+	breakdown, err := h.financeService.GetCostBreakdown(agency.ID)
+	if err != nil {
+		SendInternalError(c)
+		return
+	}
+
+	c.JSON(http.StatusOK, breakdown)
 }
 
-func GetDailySummary(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Agency not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		summary, err := db.GetDailySummary(database, agency.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, summary)
+func (h *DailyFinanceHandler) GetDailySummary(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
 	}
+
+	summary, err := h.financeService.GetDailySummary(agency.ID)
+	if err != nil {
+		SendInternalError(c)
+		return
+	}
+
+	c.JSON(http.StatusOK, summary)
 }

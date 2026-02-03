@@ -19,6 +19,7 @@ function App() {
   const [clients, setClients] = useState([]);
   const [utilization, setUtilization] = useState(null);
   const [realityScore, setRealityScore] = useState(null);
+  const [costBreakdown, setCostBreakdown] = useState(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   const [timeHours, setTimeHours] = useState('');
@@ -32,6 +33,7 @@ function App() {
   const [costAmount, setCostAmount] = useState('');
   const [costType, setCostType] = useState('fixed');
   const [costLabel, setCostLabel] = useState('');
+  const [costCategory, setCostCategory] = useState('other');
   const [costSubmitting, setCostSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('USD');
@@ -64,6 +66,7 @@ function App() {
     fetchClients();
     fetchUtilization();
     fetchRealityScore();
+    fetchCostBreakdown();
   };
 
   const fetchDailySnapshot = async () => {
@@ -118,6 +121,13 @@ function App() {
     } catch (err) { console.error(err); }
   };
 
+  const fetchCostBreakdown = async () => {
+    try {
+      const res = await fetch('/api/cost-breakdown', { headers: { 'CF-Access-Jwt-Assertion': MOCK_JWT } });
+      if (res.status === 200) setCostBreakdown(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
   const handleCreateAgency = async (e) => {
     e.preventDefault();
     try {
@@ -165,9 +175,9 @@ function App() {
       const res = await fetch('/api/cost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'CF-Access-Jwt-Assertion': MOCK_JWT },
-        body: JSON.stringify({ amount: Number(costAmount), type: costType, label: costLabel })
+        body: JSON.stringify({ amount: Number(costAmount), type: costType, label: costLabel, category: costCategory })
       });
-      if (res.status === 201) { setCostAmount(''); setCostLabel(''); fetchAll(); }
+      if (res.status === 201) { setCostAmount(''); setCostLabel(''); setCostCategory('other'); fetchAll(); }
     } catch (err) { console.error(err); }
     finally { setCostSubmitting(false); }
   };
@@ -360,6 +370,25 @@ function App() {
           </div>
         </div>
 
+        {/* DRAG: What's killing the agency? (Ticket 11) */}
+        {realityScore && realityScore.primary_risk !== 'Healthy' && (
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', opacity: 0.5, marginBottom: '0.75rem' }}>What's Dragging You Down</div>
+            <div style={{ padding: '1rem', background: '#f8f8f8', borderLeft: '4px solid #333' }}>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.9rem' }}>
+                <li style={{ marginBottom: '0.5rem' }}>• Primary drag: <strong>{realityScore.primary_risk}</strong>
+                  {costBreakdown && realityScore.primary_risk === 'High Fixed Costs' && (
+                    <span> ({costBreakdown.primary_driver.category} costs @ {Math.round(costBreakdown.primary_driver.amount).toLocaleString()} / mo)</span>
+                  )}
+                </li>
+                {burnRunway && burnRunway.operating_margin < 0 && (
+                  <li>• Structural loss: <strong style={{ color: '#ef4444' }}>–{Math.abs(Math.round(burnRunway.operating_margin)).toLocaleString()}</strong> / month</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* PRESSURE: Am I overloaded? */}
         {utilization && (
           <div style={{ marginBottom: '2rem' }}>
@@ -410,11 +439,16 @@ function App() {
             </form>
             <form onSubmit={handleAddCost} style={{ display: 'flex', gap: '0.5rem' }}>
               <input type="number" placeholder="Cost" value={costAmount} onChange={(e) => setCostAmount(e.target.value)} required style={{ width: '80px', padding: '0.5rem' }} />
-              <select value={costType} onChange={(e) => setCostType(e.target.value)} style={{ padding: '0.5rem' }}>
+              <select value={costType} onChange={(e) => setCostType(e.target.value)} style={{ padding: '0.5rem', width: '85px' }}>
                 <option value="fixed">Fixed</option>
                 <option value="variable">Variable</option>
               </select>
-              <input type="text" placeholder="Label" value={costLabel} onChange={(e) => setCostLabel(e.target.value)} required style={{ flex: 1, padding: '0.5rem' }} />
+              <select value={costCategory} onChange={(e) => setCostCategory(e.target.value)} style={{ padding: '0.5rem', width: '85px' }}>
+                <option value="people">People</option>
+                <option value="tools">Tools</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="text" placeholder="Label" value={costLabel} onChange={(e) => setCostLabel(e.target.value)} required style={{ flex: 1, padding: '0.5rem', minWidth: '50px' }} />
               <button type="submit" disabled={costSubmitting} style={{ padding: '0.5rem 1rem', background: '#ef4444', color: 'white', border: 'none' }}>+Cost</button>
             </form>
           </div>

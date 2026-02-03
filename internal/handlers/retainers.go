@@ -1,15 +1,22 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 
-	"github.com/agency-finance-reality/server/internal/db"
+	"github.com/agency-finance-reality/server/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
-type CreateClientRequest struct {
-	Name string `json:"name" binding:"required"`
+type RetainerHandler struct {
+	agencyService services.AgencyService
+	clientService services.ClientService
+}
+
+func NewRetainerHandler(agencyService services.AgencyService, clientService services.ClientService) *RetainerHandler {
+	return &RetainerHandler{
+		agencyService: agencyService,
+		clientService: clientService,
+	}
 }
 
 type CreateRetainerRequest struct {
@@ -17,98 +24,42 @@ type CreateRetainerRequest struct {
 	MonthlyAmount float64 `json:"monthly_amount" binding:"required,gt=0"`
 }
 
-func CreateClient(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		var req CreateClientRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-			return
-		}
-
-		client, err := db.CreateClient(database, agency.ID, req.Name)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create client"})
-			return
-		}
-
-		c.JSON(http.StatusCreated, client)
+func (h *RetainerHandler) CreateRetainer(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
 	}
+
+	var req CreateRetainerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		SendError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	err = h.clientService.CreateRetainer(agency.ID, req.ClientID, req.MonthlyAmount)
+	if err != nil {
+		SendError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	c.Status(http.StatusCreated)
 }
 
-func GetClients(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		clients, err := db.GetClients(database, agency.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, clients)
+func (h *RetainerHandler) GetRetainerSummary(c *gin.Context) {
+	userID := c.MustGet("user_id").(string)
+	agency, err := h.agencyService.GetAgencyByUserID(userID)
+	if err != nil {
+		SendError(c, http.StatusNotFound, "Agency not found")
+		return
 	}
-}
 
-func CreateRetainer(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		var req CreateRetainerRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-			return
-		}
-
-		err = db.CreateRetainer(database, agency.ID, req.ClientID, req.MonthlyAmount)
-		if err != nil {
-			if err.Error() == "client already has active retainer" {
-				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create retainer"})
-			return
-		}
-
-		c.Status(http.StatusCreated)
+	summary, err := h.clientService.GetRetainerSummary(agency.ID)
+	if err != nil {
+		SendInternalError(c)
+		return
 	}
-}
 
-func GetRetainerSummary(database *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.MustGet("user_id").(string)
-
-		agency, err := db.GetAgencyByUserID(database, userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		summary, err := db.GetRetainerSummary(database, agency.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-			return
-		}
-
-		c.JSON(http.StatusOK, summary)
-	}
+	c.JSON(http.StatusOK, summary)
 }
